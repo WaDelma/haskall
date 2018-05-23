@@ -213,7 +213,7 @@ impl<T: Types> Types for Vec<T> {
     }
 }
 
-fn comp_subst(s1: &Subst, s2: &Subst) -> Subst {
+fn compose_subst(s1: &Subst, s2: &Subst) -> Subst {
     s2.iter()
         .map(|(u, t)| (u.clone(), t.apply(s1)))
         .chain(s1.clone())
@@ -221,14 +221,38 @@ fn comp_subst(s1: &Subst, s2: &Subst) -> Subst {
 }
 
 fn merge_subst(s1: &Subst, s2: &Subst) -> Option<Subst> {
-    let mut s1 = s1.iter().map(|s| s.0).collect();
-    let s2 = s2.iter().map(|s| s.0).collect();
-    for s in s2 {
-        s1.remove(s);
+    let s22: Vec<_> = s2.iter().map(|s| &s.0).collect();
+    let mut res = vec![];
+    for s in s1.iter().map(|s| s.0.clone()) {
+        if s22.contains(&&s) {
+            res.push(s);
+        }
     }
-    let agree = s1
+    let agree = res
         .iter()
-        .all(|v| Type::Var(v).apply(s1) == Type::Var(v).apply(s2))
+        .all(|v| Type::Var(v.clone()).apply(&s1) == Type::Var(v.clone()).apply(&s2));
+    if agree {
+        Some(s1.iter().chain(s2.iter()).cloned().collect())
+    } else {
+        None
+    }
+}
+
+fn most_general_unifier(a: &Type, b: &Type) -> Option<Subst> {
+    match (a, b) {
+        (Type::App(f1, p1), Type::App(f2, p2)) => {
+            let s1 = most_general_unifier(f1, f2)?;
+            let s2 = most_general_unifier(&p1.apply(&s1), &p2.apply(&s1))?;
+            Some(compose_subst(&s1, &s2))
+        },
+        (Type::Var(i), t) | (t, Type::Var(i)) => var_bind(i, t),
+        (Type::Con(c1), Type::Con(c2)) if c1 == c2 => Some(null_subst()),
+        _ => None,
+    }
+}
+
+fn var_bind(var: &TyVar, ty: &Type) -> Option<Subst> {
+    None
 }
 
 fn main() {}
