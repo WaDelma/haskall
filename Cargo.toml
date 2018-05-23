@@ -1,0 +1,6 @@
+[package]
+name = "haskall"
+version = "0.1.0"
+authors = ["WaDelma <delma@del.ma>"]
+
+[dependencies]
