@@ -29,6 +29,15 @@ pub struct TyVar {
     kind: Kind,
 }
 
+impl TyVar {
+    pub fn new<I: Into<Ident>>(ident: I, kind: Kind) -> Self {
+        TyVar {
+            ident: ident.into(),
+            kind,
+        }
+    }
+}
+
 #[derive(PartialEq, Clone)]
 pub struct TyCon {
     ident: Ident,
@@ -42,7 +51,7 @@ pub fn unit() -> Type {
     })
 }
 
-pub fn char() -> Type {
+pub fn character() -> Type {
     Type::Con(TyCon {
         ident: "Char".into(),
         kind: Kind::Star,
@@ -296,6 +305,15 @@ pub struct Pred {
     ty: Type,
 }
 
+impl Pred {
+    fn new<I: Into<Ident>>(ident: I, ty: Type) -> Self {
+        Pred {
+            ident: ident.into(),
+            ty,
+        }
+    }
+}
+
 impl<T: Types> Types for Qual<T> {
     fn apply(&self, s: &Subst) -> Self {
         Qual {
@@ -463,6 +481,22 @@ pub fn add_inst(preds: Vec<Pred>, pred: Pred) -> EnvTransformer {
 
 pub fn overlap(p1: &Pred, p2: &Pred) -> bool {
     most_general_unifier_pred(p1, p2).is_ok()
+}
+
+pub fn example_inst() -> EnvTransformer {
+    use self::Type::*;
+    use self::Kind::*;
+    add_prelude_classes()
+        .seq(add_inst(vec![], Pred::new("Ord", unit())))
+        .seq(add_inst(vec![], Pred::new("Ord", character())))
+        .seq(add_inst(vec![], Pred::new("Ord", integer())))
+        .seq(add_inst(vec![
+            Pred::new("Ord", Var(TyVar::new("a", Star))),
+            Pred::new("Ord", Var(TyVar::new("b", Star))),
+        ], Pred::new("Ord", pair(
+            Var(TyVar::new("a", Star)),
+            Var(TyVar::new("b", Star)),
+        ))))
 }
 
 impl ClassEnv {
