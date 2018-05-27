@@ -538,4 +538,114 @@ impl ClassEnv {
     }
 }
 
+pub fn is_head_normal_form(pred: &Pred) -> bool {
+    fn head_normal_form(ty: &Type) -> bool {
+        use self::Type::*;
+        match ty {
+            Var(_) => true,
+            Con(_) => false,
+            App(_, p) => head_normal_form(p),
+            _ => panic!(),
+        }
+    }
+    head_normal_form(&pred.ty)
+}
+
+impl ClassEnv {
+    pub fn to_head_normal_forms(&self, ps: &[Pred]) -> Result<Vec<Pred>, String> {
+        ps.iter().map(|p| self.to_head_normal_form(p)).collect::<Result<Vec<_>, _>>().map(|ps| ps.concat())
+    }
+
+    pub fn to_head_normal_form(&self, pred: &Pred) -> Result<Vec<Pred>, String> {
+        if is_head_normal_form(pred) {
+            Ok(vec![pred.clone()])
+        } else {
+            let preds = self.by_inst(pred).expect("Context reduction");
+            self.to_head_normal_forms(&preds)
+        }
+    }
+
+    pub fn super_class_entail(&self, ps: &[Pred], p: &Pred) -> bool {
+        ps.iter().map(|p| self.by_super(p)).any(|ps| ps.contains(p))
+    }
+
+    pub fn simplify(&self, preds: &[Pred]) -> Vec<Pred> {
+        let mut result = vec![];
+        for i in 0..preds.len() {
+            let others: Vec<_> = result.iter().chain(preds[(i + 1)..].iter()).cloned().collect();
+            // TODO: `super_class_entail` should work here
+            if !self.entail(&others, &preds[i]) {
+                result.insert(0, preds[i].clone());
+            }
+        }
+        result
+    }
+
+    pub fn reduce(&self, preds: &[Pred]) -> Result<Vec<Pred>, String> {
+        let qs = self.to_head_normal_forms(preds)?;
+        Ok(self.simplify(&qs))
+    }
+}
+
+#[derive(PartialEq, Clone)]
+pub struct Scheme {
+    forall: Vec<Kind>,
+    qual: Qual<Type>,
+}
+
+impl Types for Scheme {
+    fn apply(&self, s: &Subst) -> Self {
+        Scheme {
+            forall: self.forall.clone(),
+            qual: self.qual.apply(s)
+        }
+    }
+    fn ty_var(&self) -> Vec<TyVar> {
+        self.qual.ty_var()
+    }
+}
+
+pub fn quantify(vars: &[TyVar], ty: Qual<Type>) -> Scheme {
+    let mut vars2 = ty.ty_var();
+    vars2.retain(|v| vars.contains(v));
+    Scheme {
+        forall: vars2.iter().map(|v| v.kind()).collect(),
+        qual: ty.apply(&vars2.into_iter().zip((0..).map(Type::Gen)).collect()),
+    }
+}
+
+pub fn to_scheme(ty: &Type) -> Scheme {
+    Scheme {
+        forall: vec![],
+        qual: Qual {
+            context: vec![],
+            head: ty.clone(),
+        }
+    }
+}
+
+pub struct Assumption {
+    ident: Ident,
+    scheme: Scheme,
+}
+
+impl Types for Assumption {
+    fn apply(&self, s: &Subst) -> Self {
+        Assumption {
+            ident: self.ident.clone(),
+            scheme: self.scheme.apply(s),
+        }
+    }
+    fn ty_var(&self) -> Vec<TyVar> {
+        self.scheme.ty_var()
+    }
+}
+
+pub fn find(ident: Ident, assumptions: &[Assumption]) -> Result<Scheme, String> {
+    assumptions.iter()
+        .find(|a| ident == a.ident)
+        .map(|a| a.scheme.clone())
+        .ok_or(format!("Unbound identifier {}", ident))
+}
+
 fn main() {}
